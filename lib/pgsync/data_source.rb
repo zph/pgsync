@@ -115,14 +115,17 @@ module PgSync
 
     def dump_command(tables)
       tables = tables.keys.map { |t| "-t #{Shellwords.escape(quote_ident_full(t))}" }.join(" ")
-      # "pg_dump -Fc --verbose --schema-only --no-owner --no-acl #{tables} -d #{@url}"
-      "pg_dump -Fc --verbose --schema-only --no-owner --no-acl #{tables} -d #{Shellwords.escape @url}"
+      "pg_dump -Fc --verbose --schema-only --no-owner --no-acl #{tables} --clean #{if_exists} -d #{Shellwords.escape @url}"
     end
 
     def restore_command
+      "pg_restore --verbose --no-owner --no-acl --clean #{if_exists} -d #{Shellwords.escape @url}"
+    end
+
+    def if_exists
       psql_version = `psql --version`.lines[0].chomp.split(" ")[-1].split(/[^\d.]/)[0]
       if_exists = Gem::Version.new(psql_version) >= Gem::Version.new("9.4.0")
-      "pg_restore --verbose --no-owner --no-acl --clean #{if_exists ? "--if-exists" : nil} -d #{Shellwords.escape @url}"
+      if_exists ? '--if-exists' : nil
     end
 
     def fully_resolve_tables(tables)
