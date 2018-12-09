@@ -1,3 +1,5 @@
+require 'shellwords'
+
 module PgSync
   class DataSource
     attr_reader :url
@@ -89,14 +91,15 @@ module PgSync
       @conn ||= begin
         begin
           ENV["PGCONNECT_TIMEOUT"] ||= @timeout.to_s
-          if @url =~ /\Apostgres(ql)?:\/\//
-            config = @url
-          else
-            config = {dbname: @url}
-          end
+          config = case @url
+                   when %r(\Apostgres(ql)?://) then @url
+                   when %r(\A.*dbname=.*) then @url
+                   else
+                     {dbname: @url}
+                   end
           PG::Connection.new(config)
         rescue PG::ConnectionBad => e
-          raise PgSync::Error, e.message
+          raise PgSync::Error, e
         rescue URI::InvalidURIError
           raise PgSync::Error, "Invalid connection string"
         end
@@ -112,13 +115,14 @@ module PgSync
 
     def dump_command(tables)
       tables = tables.keys.map { |t| "-t #{Shellwords.escape(quote_ident_full(t))}" }.join(" ")
-      "pg_dump -Fc --verbose --schema-only --no-owner --no-acl #{tables} -d #{@url}"
+      # "pg_dump -Fc --verbose --schema-only --no-owner --no-acl #{tables} -d #{@url}"
+      "pg_dump -Fc --verbose --schema-only --no-owner --no-acl #{tables} -d #{Shellwords.escape @url}"
     end
 
     def restore_command
       psql_version = `psql --version`.lines[0].chomp.split(" ")[-1].split(/[^\d.]/)[0]
       if_exists = Gem::Version.new(psql_version) >= Gem::Version.new("9.4.0")
-      "pg_restore --verbose --no-owner --no-acl --clean #{if_exists ? "--if-exists" : nil} -d #{@url}"
+      "pg_restore --verbose --no-owner --no-acl --clean #{if_exists ? "--if-exists" : nil} -d #{Shellwords.escape @url}"
     end
 
     def fully_resolve_tables(tables)
