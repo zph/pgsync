@@ -110,7 +110,7 @@ module PgSync
                   fakers = row.scan(/Faker::\w+\.\w+/m)
                   if !fakers.empty?
                     fakers.each do |f|
-                      row.gsub!(/#{Regexp.escape(f)}/, escape(eval(f)))
+                      row.gsub!(/#{Regexp.escape(f)}/, eval(f))
                     end
                   end
 
