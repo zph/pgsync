@@ -11,6 +11,7 @@ require "tempfile"
 require "thread" # windows only
 require "uri"
 require "yaml"
+require "faker"
 
 require "pgsync/client"
 require "pgsync/data_source"

@@ -107,6 +107,13 @@ module PgSync
             begin
               from_connection.copy_data copy_to_command do
                 while (row = from_connection.get_copy_data)
+                  fakers = row.scan(/Faker::\w+\.\w+/m)
+                  if !fakers.empty?
+                    fakers.each do |f|
+                      row.gsub!(/#{Regexp.escape(f)}/, escape(eval(f)))
+                    end
+                  end
+
                   file.write(row)
                 end
               end
@@ -140,6 +147,14 @@ module PgSync
             to_connection.copy_data "COPY #{quote_ident_full(table)} (#{fields}) FROM STDIN" do
               from_connection.copy_data copy_to_command do
                 while (row = from_connection.get_copy_data)
+                  fakers = row.scan(/Faker::\w+\.\w+/m)
+                  if !fakers.empty?
+                    Faker::Config.random = Random.new()
+                    fakers.each do |f|
+                      row.gsub!(/#{Regexp.escape(f)}/, eval(f))
+                    end
+                  end
+
                   to_connection.put_copy_data(row)
                 end
               end
@@ -163,41 +178,41 @@ module PgSync
     # TODO better performance
     def rule_match?(table, column, rule)
       regex = Regexp.new('\A' + Regexp.escape(rule).gsub('\*','[^\.]*') + '\z')
-      regex.match(column) || regex.match("#{table.split(".", 2)[-1]}.#{column}") || regex.match("#{table}.#{column}")
+      regex.match(column) ||
+        regex.match("#{table.split(".", 2)[-1]}.#{column}") ||
+        regex.match("#{table}.#{column}")
     end
 
     # TODO wildcard rules
+    # TODO: make apply_strategy work on pipeline stream of DATA so that it can
+    # be different for each record. Currently this strategy is applied during
+    # the COPY phase but not for each record.
     def apply_strategy(rule, table, column)
-      if rule.is_a?(Hash)
-        if rule.key?("value")
-          escape(rule["value"])
-        elsif rule.key?("statement")
-          rule["statement"]
-        else
-          raise PgSync::Error, "Unknown rule #{rule.inspect} for column #{column}"
-        end
-      else
-        strategies = {
-          "unique_email" => "'email' || #{table}.id || '@example.org'",
-          "untouched" => quote_ident(column),
-          "unique_phone" => "(#{table}.id + 1000000000)::text",
-          "random_int" => "(RAND() * 10)::int",
-          "random_date" => "'1970-01-01'",
-          "random_time" => "NOW()",
-          "unique_secret" => "'secret' || #{table}.id",
-          "random_ip" => "'127.0.0.1'",
-          "random_letter" => "'A'",
-          "random_string" => "right(md5(random()::text),10)",
-          "random_number" => "(RANDOM() * 1000000)::int",
-          "null" => "NULL",
-          nil => "NULL"
-        }
-        if strategies[rule]
-          strategies[rule]
-        else
-          raise PgSync::Error, "Unknown rule #{rule} for column #{column}"
-        end
-      end
+      strategies = {
+        "unique_email" => "'email' || #{table}.id || '@example.org'",
+        "untouched" => quote_ident(column),
+        "random_int" => "(RAND() * 10)::int",
+        "random_time" => "NOW()",
+        "unique_secret" => "'secret' || #{table}.id",
+        "random_letter" => "'A'",
+        "random_string" => "right(md5(random()::text),10)",
+        "random_number" => "(RANDOM() * 1000000)::int",
+        "random_boolean" => "LOWER((RANDOM() > 0.5)::TEXT)",
+        "null" => "NULL",
+        nil => "NULL"
+      }
+
+      result = case
+               when rule.is_a?(Hash) && rule.key?("value")     then escape(rule["value"])
+               when rule.is_a?(Hash) && rule.key?("statement") then rule["statement"]
+               when rule.is_a?(Hash) then
+                 raise PgSync::Error, "Unknown rule #{rule.inspect} for column #{column}"
+               when rule[/^Faker::/] then escape(rule)
+               when strategies[rule] then strategies[rule]
+               else
+                 raise PgSync::Error, "Unknown rule #{rule} for column #{column}"
+               end
+      result
     end
 
     def log(message = nil)
