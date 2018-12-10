@@ -118,6 +118,20 @@ module PgSync
       "pg_dump -Fc --verbose --schema-only --no-owner --no-acl #{tables} --clean #{if_exists} -d #{Shellwords.escape @url}"
     end
 
+    def dump_command_all_schemas(tables)
+      schemas = tables.keys.map do |t|
+        parts = t.split
+        case parts.length
+        when 2
+          parts[0]
+        else
+          'public'
+        end
+      end.compact.uniq
+      schema_string = schemas.map { |s| "--schema=#{Shellwords.escape s}"}.join(" ")
+      "pg_dump -Fc --verbose --schema-only #{schema_string} --no-owner --no-acl --clean #{if_exists} -d #{Shellwords.escape @url}"
+    end
+
     def restore_command
       "pg_restore --verbose --no-owner --no-acl --clean #{if_exists} -d #{Shellwords.escape @url}"
     end

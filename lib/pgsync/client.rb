@@ -85,7 +85,12 @@ module PgSync
           end
 
           log "* Dumping schema"
+          # TODO: Sync schemas with only tables does not create schemas only tables in
+          # schemas.
+          # Recommend using first run of --schema-only then a run of the specific
+          # data desired.
           sync_schema(source, destination, tables)
+          create_schemas(source, destination, tables)
         end
 
         unless opts[:schema_only]
@@ -143,6 +148,12 @@ module PgSync
         opts[:sql] << " LIMIT #{opts[:limit]}"
         deprecated "Use `\"LIMIT #{opts[:limit]}\"` instead"
       end
+    end
+
+    def create_schemas(source, destination, tables)
+      dump_command = source.dump_command_all_schemas(tables)
+      restore_command = destination.restore_command
+      system("#{dump_command} | #{restore_command}")
     end
 
     def sync_schema(source, destination, tables)
